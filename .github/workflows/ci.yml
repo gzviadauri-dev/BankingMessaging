@@ -30,10 +30,12 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Authenticate GitHub Packages (Company.Observability)
+        # GITHUB_TOKEN is injected automatically by Actions with packages:read permission.
+        # No custom secret needed — this works out-of-the-box on every push/PR.
         run: |
           dotnet nuget update source github-gzviadauri \
             --username gzviadauri-dev \
-            --password "${{ secrets.NUGET_TOKEN }}" \
+            --password "${{ secrets.GITHUB_TOKEN }}" \
             --store-password-in-clear-text
 
       - name: Restore
