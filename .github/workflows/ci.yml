@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: read
-  packages: read        # pull Company.Observability from GitHub Packages
 
 jobs:
   # ── 1. Backend: Build & Test ───────────────────────────────────────────────
@@ -29,20 +28,28 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Authenticate GitHub Packages (Company.Observability)
-        # GITHUB_TOKEN is injected automatically by Actions with packages:read permission.
-        # No custom secret needed — this works out-of-the-box on every push/PR.
-        run: |
-          dotnet nuget update source github-gzviadauri \
-            --username gzviadauri-dev \
-            --password "${{ secrets.GITHUB_TOKEN }}" \
-            --store-password-in-clear-text
-
+      # NUGET_AUTH_TOKEN is the standard env var that NuGet reads automatically
+      # when the nuget.config ClearTextPassword is set to %NUGET_AUTH_TOKEN%.
+      # Using a PAT (NUGET_TOKEN secret) instead of GITHUB_TOKEN because
+      # GITHUB_TOKEN is scoped to THIS repo only; Company.Observability lives
+      # in a different repo under the same account and requires a PAT with
+      # read:packages scope.
+      #
+      # To create the secret:
+      #   1. Go to https://github.com/settings/tokens → Generate new token (classic)
+      #   2. Select scope: read:packages
+      #   3. Copy the token
+      #   4. Go to repo Settings → Secrets and variables → Actions → New repository secret
+      #   5. Name: NUGET_TOKEN  Value: <paste token>
       - name: Restore
         run: dotnet restore
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.NUGET_TOKEN }}
 
       - name: Build
         run: dotnet build --no-restore -c Release
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.NUGET_TOKEN }}
 
       - name: Test
         run: dotnet test --no-build -c Release --verbosity normal --logger "trx;LogFileName=results.trx"
