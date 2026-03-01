@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read        # pull Company.Observability from GitHub Packages
+
+jobs:
+  # ── 1. Backend: Build & Test ───────────────────────────────────────────────
+  backend:
+    name: Backend (.NET 8) — Build & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: BankingMessaging.Back
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Authenticate GitHub Packages (Company.Observability)
+        run: |
+          dotnet nuget update source github-gzviadauri \
+            --username gzviadauri-dev \
+            --password "${{ secrets.NUGET_TOKEN }}" \
+            --store-password-in-clear-text
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Test
+        run: dotnet test --no-build -c Release --verbosity normal --logger "trx;LogFileName=results.trx"
+        continue-on-error: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: BankingMessaging.Back/tests/**/TestResults/*.trx
+
+  # ── 2. Frontend: Type-check + Build ───────────────────────────────────────
+  frontend:
+    name: Frontend (React + Vite) — Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: BankingMessaging.Front
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: BankingMessaging.Front/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build

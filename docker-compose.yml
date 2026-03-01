@@ -1,0 +1,108 @@
+version: '3.8'
+
+# Default profile  : rabbitmq + sqlserver + jaeger
+# Graylog profile  : adds mongodb + opensearch + graylog (log aggregation)
+#
+# Usage:
+#   docker-compose up -d                          # core infra only
+#   docker-compose --profile graylog up -d        # core infra + Graylog log aggregation
+#
+# When Graylog is running, set Observability:Logging:Graylog:Enabled=true
+# in appsettings.json and restart the services.
+
+services:
+
+  # ── Message Broker ────────────────────────────────────────────────────────────────────
+  # Uses heidiks/rabbitmq-delayed-message-exchange — standard rabbitmq:3-management image
+  # with the rabbitmq_delayed_message_exchange plugin pre-installed.
+  # The plugin is required by MassTransit's UseDelayedMessageScheduler() for saga timeout scheduling.
+  rabbitmq:
+    image: heidiks/rabbitmq-delayed-message-exchange:3.13.7-management
+    container_name: banking-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  # ── Database ──────────────────────────────────────────────────────────────────────────
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: banking-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "Banking123!"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqldata:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U SA -P 'Banking123!' -Q 'SELECT 1' -No || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ── Distributed Tracing (OpenTelemetry → Jaeger) ──────────────────────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: banking-jaeger
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC receiver
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+  # ── Log Aggregation: Graylog stack (optional — start with --profile graylog) ──────────
+  mongodb:
+    image: mongo:6.0
+    container_name: banking-mongodb
+    profiles: [ graylog ]
+    volumes:
+      - mongo_data:/data/db
+
+  opensearch:
+    image: opensearchproject/opensearch:2.15.0
+    container_name: banking-opensearch
+    profiles: [ graylog ]
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+
+  graylog:
+    image: graylog/graylog:6.0
+    container_name: banking-graylog
+    profiles: [ graylog ]
+    environment:
+      GRAYLOG_HTTP_EXTERNAL_URI: "http://127.0.0.1:9000/"
+      # Secret (min 16 chars): change before production use
+      GRAYLOG_PASSWORD_SECRET: "somepasswordpepper123"
+      # SHA-256 of "admin" — login: admin / admin
+      GRAYLOG_ROOT_PASSWORD_SHA2: "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
+      GRAYLOG_ELASTICSEARCH_HOSTS: "http://opensearch:9200"
+      GRAYLOG_MONGODB_URI: "mongodb://mongodb:27017/graylog"
+    ports:
+      - "9000:9000"       # Graylog Web UI  →  http://localhost:9000  (admin / admin)
+      - "12201:12201/udp" # GELF UDP input  →  Observability:Logging:Graylog:Protocol=udp
+      - "12202:12201/tcp" # GELF TCP input  →  Observability:Logging:Graylog:Protocol=tcp
+    depends_on:
+      - mongodb
+      - opensearch
+
+volumes:
+  sqldata:
+  rabbitmq_data:
+  mongo_data:
+  opensearch_data:

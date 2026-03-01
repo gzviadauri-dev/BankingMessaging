@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BankingMessaging.Api/BankingMessaging.Api.csproj" />
+    <Project Path="src/BankingMessaging.Contracts/BankingMessaging.Contracts.csproj" />
+    <Project Path="src/BankingMessaging.Infrastructure/BankingMessaging.Infrastructure.csproj" />
+    <Project Path="src/BankingMessaging.NotificationWorker/BankingMessaging.NotificationWorker.csproj" />
+    <Project Path="src/BankingMessaging.TransferWorker/BankingMessaging.TransferWorker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BankingMessaging.IntegrationTests/BankingMessaging.IntegrationTests.csproj" />
+  </Folder>
+</Solution>
